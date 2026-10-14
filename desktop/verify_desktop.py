@@ -7,7 +7,7 @@ import auth,settings,library,music_export as m
 
 class LibraryChecks(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.stack=ExitStack()
+        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name).resolve();self.stack=ExitStack()
         for owner,key,value in ((m,'DB',self.root/'state.db'),(m,'AUTH',self.root/'auth.json'),(m,'STATUS',self.root/'status.json'),(m,'STOP',self.root/'STOP'),(m,'DEST',self.root/'old'),(settings,'CONFIG',self.root/'settings.json'),(settings,'MOVE',self.root/'move.json'),(auth,'AUTH',self.root/'auth.json')):self.stack.enter_context(patch.object(owner,key,value))
         settings.save({'destination':str(m.DEST),'lyrics':False});auth.AUTH.write_text('{}');m.initialize()
         with m.db() as c:c.execute("INSERT INTO meta VALUES('uid','42')")

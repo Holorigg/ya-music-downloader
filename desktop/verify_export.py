@@ -24,7 +24,7 @@ with patch.object(m.requests,'get',return_value=Response()) as get:
     assert 'Authorization' not in get.call_args.kwargs['headers']
 
 with tempfile.TemporaryDirectory() as d:
-    root=Path(d)
+    root=Path(d).resolve()
     with patch.object(m,'DB',root/'state.db'),patch.object(m,'DEST',root/'music'),patch.object(m,'STOP',root/'STOP'):
         m.initialize()
         with m.db() as c:

@@ -30,7 +30,7 @@ def response(endpoint,data=None,params=None):
 
 from test_media import create_mp3
 with tempfile.TemporaryDirectory() as folder,ExitStack() as stack:
-    root=Path(folder);archive=root/'archive';archive.mkdir()
+    root=Path(folder).resolve();archive=root/'archive';archive.mkdir()
     fixture=create_mp3(root/'fixture.mp3')
     for owner,field,value in ((m,'DB',root/'state.db'),(m,'AUTH',root/'auth.json'),(m,'DEST',archive),(m,'STATUS',root/'status.json'),(m,'STOP',root/'STOP'),(auth,'AUTH',root/'auth.json'),(auth,'DEVICE',root/'device.json'),(settings,'CONFIG',root/'settings.json'),(settings,'MOVE',root/'relocation.json'),(lyrics,'CACHE',root/'cache')):
         stack.enter_context(patch.object(owner,field,value))

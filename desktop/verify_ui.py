@@ -26,7 +26,7 @@ def wait(predicate,seconds=4):
 
 class NativeChecks(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name);self.stack=ExitStack();self.window=None
+        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name).resolve();self.stack=ExitStack();self.window=None
         for owner,key,value in ((m,'DB',self.root/'state.db'),(m,'STATUS',self.root/'status.json'),(m,'STOP',self.root/'STOP'),(settings,'CONFIG',self.root/'settings.json'),(settings,'MOVE',self.root/'relocation.json'),(auth,'AUTH',self.root/'auth.json'),(auth,'DEVICE',self.root/'device.json')):self.stack.enter_context(patch.object(owner,key,value))
         self.stack.enter_context(patch.object(app,'running',return_value=False));self.stack.enter_context(patch.object(app.Window,'check_account',return_value=None));self.stack.enter_context(patch.object(app.Window,'make_tray',lambda self:setattr(self,'tray',None)))
         settings.save({'destination':str(self.root/'music'),'theme':'dark'});self.stack.enter_context(patch.object(m,'DEST',settings.destination()));m.initialize();self.music=self.root/'music/account_42';self.music.mkdir(parents=True);self.file=self.music/'original.mp3';self.file.write_bytes(b'owned-original-audio');self.file.with_suffix('.txt').write_text('Первая строка\nВторая строка',encoding='utf-8')

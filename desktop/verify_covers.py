@@ -9,7 +9,7 @@ import music_covers as covers
 from test_media import create_mp3,COVER
 picture,kind=COVER,'image/png'
 with TemporaryDirectory() as d:
-    root=Path(d);source=root/'music'/'sample.mp3';source.parent.mkdir()
+    root=Path(d).resolve();source=root/'music'/'sample.mp3';source.parent.mkdir()
     import shutil
     create_mp3(source)
     real={'path':str(source),'size':source.stat().st_size,'cover_uri':'avatars.yandex.net/test-only/%%'}
