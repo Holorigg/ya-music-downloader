@@ -32,7 +32,7 @@ jobs:
         run: python -X utf8 run_checks.py
 
   android:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -47,4 +47,4 @@ jobs:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
       - name: Test, build and lint Android
         working-directory: android
-        run: ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug :app:lintRelease
+        run: .\gradlew.bat --no-daemon --console=plain :app:testDebugUnitTest :app:assembleDebug :app:lintRelease

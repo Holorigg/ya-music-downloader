@@ -109,13 +109,16 @@ with tempfile.TemporaryDirectory() as folder,ExitStack() as stack:
     new=root/'new';new.mkdir();(new/'my-other-song.mp3').write_bytes(b'other')
     real_rename=os.rename;renames=[]
     def interrupted(source,target):
-        renames.append(str(source))
+        renames.append((Path(source),Path(target)))
         if len(renames)==2:raise PermissionError('Simulated interruption')
         return real_rename(source,target)
     with patch.object(settings.os,'rename',side_effect=interrupted):
         try:settings.relocate(new);raise AssertionError('Interruption was ignored')
         except PermissionError:pass
-    assert settings.MOVE.exists() and settings.destination()==archive and Path(read_row('1')['path']).is_relative_to(new)
+    assert settings.MOVE.exists() and settings.destination()==archive
+    first_source,first_target=renames[0]
+    assert first_target.is_file() and not first_source.exists()
+    assert any(Path(read_row(ident)['path'])==first_target for ident in ('1','2','3'))
     journal=json.loads(settings.MOVE.read_text(encoding='utf-8'))
     count=settings.relocate(new)
     assert count==3 and (new/'my-other-song.mp3').read_bytes()==b'other'
