@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import shutil
 import struct
@@ -81,6 +82,43 @@ def remove_output(path: Path, parent: Path):
     elif resolved.exists():resolved.unlink()
 
 
+def build_environment(profile: Path):
+    environment=os.environ.copy()
+    windows=Path(environment.get('SystemRoot',r'C:\Windows'))
+    # Analysis must not collect DLLs from unrelated software on the host PATH.
+    environment['PATH']=os.pathsep.join(str(path) for path in (
+        Path(sys.executable).parent,Path(sys.base_prefix),Path(sys.base_prefix)/'DLLs',
+        windows/'System32',windows))
+    for name in ('PYTHONPATH','QT_PLUGIN_PATH','QT_QPA_PLATFORM_PLUGIN_PATH','QML2_IMPORT_PATH'):
+        environment.pop(name,None)
+    environment['MUSIC_DATA_DIR']=str(profile)
+    return environment
+
+
+def bundle_spec(mode: str, version_file: Path):
+    binaries=[(str(path),'tools') for path in
+              (TOOLS/'ffmpeg.exe',TOOLS/'ffprobe.exe',*sorted(TOOLS.rglob('*.dll')))]
+    datas=[(str(DESKTOP/'assets'),'assets'),(str(DESKTOP/'music.ico'),'.'),(str(LICENSES),'licenses')]
+    script=f'''from pathlib import Path
+a=Analysis([{str(DESKTOP/'entrypoint.py')!r}],pathex=[{str(DESKTOP)!r}],
+    binaries={binaries!r},datas={datas!r},excludes={list(EXCLUDED_MODULES)!r})
+# FFmpeg loads these beside its executables; do not collect a second root copy.
+tool_root=Path({str(TOOLS)!r}).resolve()
+a.binaries=[item for item in a.binaries if not (
+    '/' not in item[0].replace(chr(92),'/') and item[0].lower().endswith('.dll')
+    and Path(item[1]).resolve().parent==tool_root)]
+pyz=PYZ(a.pure)
+'''
+    options=(f"name='MyMusic',console=False,debug=False,strip=False,upx=False,"
+             f"icon={str(DESKTOP/'music.ico')!r},version={str(version_file)!r}")
+    if mode=='onedir':
+        script+=f"exe=EXE(pyz,a.scripts,[],exclude_binaries=True,contents_directory='_internal',{options})\n"
+        script+="result=COLLECT(exe,a.binaries,a.datas,strip=False,upx=False,name='MyMusic')\n"
+    else:
+        script+=f"exe=EXE(pyz,a.scripts,a.binaries,a.datas,[],{options})\n"
+    return script
+
+
 def build(mode: str, version: str):
     output_dir=DIST/mode
     product_dir=output_dir/'MyMusic'
@@ -92,20 +130,11 @@ def build(mode: str, version: str):
     version_file=mode_build/'version_info.txt'
     version_file.write_text(version_resource(version),encoding='utf-8')
 
-    command=[sys.executable,'-m','PyInstaller','--noconfirm','--clean','--windowed',
-             '--name','MyMusic','--icon',str(DESKTOP/'music.ico'),
-             '--distpath',str(output_dir),'--workpath',str(mode_build/'work'),
-             '--specpath',str(mode_build),'--version-file',str(version_file)]
-    command.append('--onedir' if mode=='onedir' else '--onefile')
-    if mode=='onedir':command.extend(['--contents-directory','_internal'])
-    command.extend(['--add-data',f"{DESKTOP/'assets'};assets",
-                    '--add-data',f"{DESKTOP/'music.ico'};.",
-                    '--add-data',f"{LICENSES};licenses"])
-    for path in (TOOLS/'ffmpeg.exe',TOOLS/'ffprobe.exe',*sorted(TOOLS.rglob('*.dll'))):
-        command.extend(['--add-binary',f'{path};tools'])
-    for name in EXCLUDED_MODULES:command.extend(['--exclude-module',name])
-    command.append(str(DESKTOP/'entrypoint.py'))
-    subprocess.run(command,cwd=DESKTOP,check=True)
+    spec_file=mode_build/'MyMusic.spec'
+    spec_file.write_text(bundle_spec(mode,version_file),encoding='utf-8')
+    command=[sys.executable,'-m','PyInstaller','--noconfirm','--clean',
+             '--distpath',str(output_dir),'--workpath',str(mode_build/'work'),str(spec_file)]
+    subprocess.run(command,cwd=DESKTOP,env=build_environment(mode_build/'build-profile'),check=True)
     if not target.is_file() and not target.is_dir():raise RuntimeError(f'PyInstaller did not produce {target}.')
     print(f'Built {mode} {version}: {target}')
 

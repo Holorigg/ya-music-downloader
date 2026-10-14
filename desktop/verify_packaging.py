@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 from types import ModuleType
+from unittest.mock import patch
 
 with tempfile.TemporaryDirectory(prefix='ya-music-packaging-check-') as temporary:
     os.environ['MUSIC_DATA_DIR']=str(Path(temporary)/'data')
@@ -46,5 +47,16 @@ with tempfile.TemporaryDirectory(prefix='ya-music-packaging-check-') as temporar
         for name,module in previous.items():
             if module is None:sys.modules.pop(name,None)
             else:sys.modules[name]=module
+
+    sys.path.insert(0,str(Path(__file__).resolve().parent.parent/'tools'))
+    from build_windows import build_environment
+    unrelated=str(Path(temporary)/'unrelated-native-tools')
+    with patch.dict(os.environ,{'PATH':unrelated,'PYTHONPATH':unrelated,'QT_PLUGIN_PATH':unrelated}):
+        environment=build_environment(Path(temporary)/'build-profile')
+        assert unrelated not in environment['PATH'].split(os.pathsep)
+        assert str(Path(sys.executable).parent) in environment['PATH'].split(os.pathsep)
+        assert 'PYTHONPATH' not in environment and 'QT_PLUGIN_PATH' not in environment
+        assert environment['MUSIC_DATA_DIR']==str(Path(temporary)/'build-profile')
+        assert os.environ['PATH']==unrelated
 
 print('Source and frozen worker command checks passed')

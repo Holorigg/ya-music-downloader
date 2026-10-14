@@ -47,9 +47,10 @@ def main(report_file):
         import settings
         import music_export as worker
         import auth
-        from PySide6.QtWidgets import QApplication
+        from PySide6.QtCore import QCoreApplication
         from PySide6.QtGui import QIcon
         from PySide6.QtSvg import QSvgRenderer
+        from PySide6.QtWidgets import QApplication
 
         import app
         result['application_version']=app.VERSION
@@ -128,7 +129,7 @@ def main(report_file):
             if decode.returncode!=0:raise AssertionError
         check('bundled-ffmpeg-ffprobe-and-license-assets',check_media_tools)
     except Exception as exc:
-        failures.append({'name':'self-test-setup','error':type(exc).__name__})
+        failures.append({'name':'self-test-setup','error':type(exc).__name__,'detail':str(exc)[:400]})
     finally:
         for key,value in original.items():
             if value is None:os.environ.pop(key,None)
