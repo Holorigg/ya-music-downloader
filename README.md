@@ -8,6 +8,15 @@
 Проект буду поддерживать по мере поступления проблем, так что в случае чего —
 оставляйте issue, постараемся разобраться :)
 
+## Скачать
+
+[Релизы Windows и Android](https://github.com/Holorigg/ya-music-downloader/releases/latest).
+У обеих платформ общий номер версии.
+
+- **Android:** установи APK. Обновление устанавливается поверх прежней версии.
+- **Windows:** распакуй `Windows-source.zip` и следуй
+  [инструкции запуска](desktop/README.md). Нужны Python 3.12 x64 и FFmpeg.
+
 ![Библиотека Windows в тёмной теме](docs/screenshots/desktop-dark.png)
 
 <p align="center">

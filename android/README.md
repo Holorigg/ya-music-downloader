@@ -2,6 +2,10 @@
 
 Нативное приложение «Моя музыка», Java и Material 3. Android 8.0+ (API 26).
 
+Готовый APK — в
+[релизах](https://github.com/Holorigg/ya-music-downloader/releases/latest).
+При обновлении установи его поверх прежней версии.
+
 ## Совместимость
 
 | Требование | Поддержка |

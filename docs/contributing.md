@@ -33,6 +33,7 @@ Robolectric проверяет логику и отрисовывает наст
 ```powershell
 git add .
 python tools/check_public_tree.py
+python tools/check_versions.py
 git diff --cached --check
 ```
 
@@ -63,6 +64,10 @@ Android: тесты `RenderChecks` создают демоэкраны в `andro
 
 ## Изменения
 
+- Windows и Android выпускаются с одним номером версии. Обновляй `VERSION`
+  в `desktop/app.py` и `versionName` в `android/android-app/build.gradle`
+  вместе; для Android также увеличивай `versionCode`. Тег релиза — `vX.Y.Z`.
+  Перед выпуском выполни `python tools/check_versions.py --tag vX.Y.Z`.
 - Сохраняй файлы при скрытии или очистке архива, а также проверку целостности
   и защиту от перезаписи посторонних файлов.
 - Не отправляй OAuth-токен серверам аудио, обложек или текстов.
