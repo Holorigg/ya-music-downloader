@@ -10,6 +10,10 @@ public final class Mp3 {
     public static final class Info {
         public long start,end,durationMs,frames;
     }
+    public static final class Tags {
+        public final Map<String,String> text=new HashMap<>();
+        public boolean cover,lyrics;
+    }
     private static int synchsafe(byte[] b,int at) throws IOException {
         int n=0;for(int i=at;i<at+4;i++){if((b[i]&128)!=0)throw new IOException("Некорректный ID3");n=(n<<7)|(b[i]&127);}return n;
     }
@@ -37,6 +41,42 @@ public final class Mp3 {
             if(info.frames==0||(expectedMs>0&&Math.abs(info.durationMs-expectedMs)>Math.max(2500,expectedMs*.015)))throw new IOException("MP3 не прошёл проверку полной длительности");
         }
         return info;
+    }
+    /** Read only plain, uncompressed ID3v2.3/v2.4 frames written by this app. */
+    public static Tags readTags(File file)throws Exception{
+        Tags tags=new Tags();
+        try(RandomAccessFile in=new RandomAccessFile(file,"r")){
+            if(in.length()<10)throw new IOException("В MP3 нет ID3-тегов приложения");
+            byte[] header=new byte[10];in.readFully(header);
+            int version=header[3]&255,flags=header[5]&255;
+            if(header[0]!='I'||header[1]!='D'||header[2]!='3'||(version!=3&&version!=4)||flags!=0)throw new IOException("Неподдерживаемый формат ID3");
+            long end=10L+synchsafe(header,6);if(end>in.length())throw new IOException("Оборван заголовок ID3");
+            while(in.getFilePointer()+10<=end){
+                byte[] idBytes=new byte[4];in.readFully(idBytes);String id=new String(idBytes,StandardCharsets.US_ASCII);
+                if(id.equals("\u0000\u0000\u0000\u0000"))break;
+                if(!id.matches("[A-Z0-9]{4}"))throw new IOException("Некорректный кадр ID3");
+                byte[] sizeBytes=new byte[4];in.readFully(sizeBytes);int size=version==4?synchsafe(sizeBytes,0):((sizeBytes[0]&255)<<24)|((sizeBytes[1]&255)<<16)|((sizeBytes[2]&255)<<8)|(sizeBytes[3]&255);
+                int frameFlags=in.readUnsignedShort();long frameEnd=in.getFilePointer()+size;if(size<0||frameEnd>end||frameFlags!=0)throw new IOException("Некорректный кадр ID3");
+                if(id.equals("TIT2")||id.equals("TPE1")||id.equals("TALB")){
+                    if(size<2||size>1024*1024||tags.text.containsKey(id))throw new IOException("Некорректные текстовые теги MP3");
+                    byte[] value=new byte[size];in.readFully(value);tags.text.put(id,decodeText(value));
+                }else if(id.equals("APIC"))tags.cover=true;
+                else if(id.equals("USLT"))tags.lyrics=true;
+                in.seek(frameEnd);
+            }
+        }
+        return tags;
+    }
+    private static String decodeText(byte[] frame)throws Exception{
+        int encoding=frame[0]&255;String value;
+        if(encoding==0)value=new String(frame,1,frame.length-1,StandardCharsets.ISO_8859_1);
+        else if(encoding==1)value=new String(frame,1,frame.length-1,StandardCharsets.UTF_16);
+        else if(encoding==2)value=new String(frame,1,frame.length-1,StandardCharsets.UTF_16BE);
+        else if(encoding==3)value=new String(frame,1,frame.length-1,StandardCharsets.UTF_8);
+        else throw new IOException("Неизвестная кодировка ID3");
+        while(value.endsWith("\u0000"))value=value.substring(0,value.length()-1);
+        if(value.indexOf('\u0000')>=0)throw new IOException("Несколько значений в теге ID3");
+        return value;
     }
     private static byte[] text(String s){byte[] utf=s.replace("\u0000","").getBytes(StandardCharsets.UTF_16);byte[] b=new byte[utf.length+1];b[0]=1;System.arraycopy(utf,0,b,1,utf.length);return b;}
     private static void frame(DataOutputStream out,String id,byte[] data)throws IOException{out.write(id.getBytes(StandardCharsets.US_ASCII));out.writeInt(data.length);out.writeShort(0);out.write(data);}

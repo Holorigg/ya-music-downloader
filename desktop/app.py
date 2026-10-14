@@ -12,7 +12,7 @@ import music_export as m
 from music_export import worker_running as running
 from native_ui import Theme,Switch,NavButton,RoundedArt,Artwork,MusicModel,MusicList,SongDelegate,SwipeCard,button,icon,fade,ROLE
 
-VERSION='2.0.1'
+VERSION='2.0.2'
 PHASES={'cataloging':'Проверка избранного','downloading':'Скачивание музыки','enriching':'Обложки и тексты','stopped':'Синхронизация остановлена','failed':'Синхронизация не завершена','needs_login':'Нужен вход в Яндекс'}
 
 class Job(QThread):

@@ -25,7 +25,8 @@ final class SyncEngine {
     static volatile boolean userStopped=false;
     static volatile Store statusStore;
     final Context context;final Store store;final Net net;final Files files;
-    SyncEngine(Context c,Store s){context=c;store=s;net=new Net(c,s);files=new Files(c,s);}
+    SyncEngine(Context c,Store s){this(c,s,new Net(c,s));}
+    SyncEngine(Context c,Store s,Net network){context=c;store=s;net=network;files=new Files(c,s);}
     static class Stopped extends IOException{Stopped(){super("Остановлено. Прогресс сохранён.");}}
     static void checkStop()throws Stopped{if(running.get()&&(stop.get()||System.currentTimeMillis()>deadline))throw new Stopped();}
     static void message(String text){status=text;Store s=statusStore;if(s!=null)s.prefs.edit().putString("status",text).apply();}
@@ -34,7 +35,7 @@ final class SyncEngine {
         statusStore=store;
         int before=store.downloaded();
         try{
-            File[] leftovers=context.getCacheDir().listFiles();if(leftovers!=null)for(File f:leftovers)if(f.isFile()&&f.getName().matches("(song|enhance|move)-.+\\.(raw|mp3)"))f.delete();
+            File[] leftovers=context.getCacheDir().listFiles();if(leftovers!=null)for(File f:leftovers)if(f.isFile()&&f.getName().matches("(song|enhance|move|import)-.+\\.(raw|mp3)"))f.delete();
             String move=store.prefs.getString("move_target","");if(!move.isEmpty()){phase="move";message("Завершаю перенос музыки…");files.move(move);}
             String tree=store.prefs.getString("tree","");if(tree.isEmpty())throw new IOException("Сначала выбери папку сохранения");files.children(tree);catalog();
             for(JSONObject r:store.rows("pending_uri IS NOT NULL")){checkStop();files.recover(r);}
@@ -68,7 +69,7 @@ final class SyncEngine {
         for(String key:new String[]{"host","path","ts","s"})if(!values.containsKey(key))throw new IOException("Яндекс не выдал полную ссылку MP3");String path=values.get("path");if(!path.startsWith("/"))throw new IOException("Некорректная ссылка MP3");String sign=Mp3.hex(MessageDigest.getInstance("MD5").digest(("XGRlBW9FXlekgbPrRHuSiA"+path.substring(1)+values.get("s")).getBytes(StandardCharsets.UTF_8)));return Net.allowed("https://"+values.get("host")+"/get-mp3/"+sign+"/"+values.get("ts")+path);
     }
     void download(JSONObject row)throws Exception{
-        if(files.recover(row))return;checkStop();JSONObject t=Store.metadata(row);if(t.optLong("durationMs")<=0)throw new IOException("Яндекс не выдал длительность для проверки полного MP3");JSONArray options=(JSONArray)net.api("/tracks/"+Net.id(row.getString("id"))+"/download-info",null);JSONObject best=null;for(int n=0;n<options.length();n++){JSONObject option=options.getJSONObject(n);if("mp3".equals(option.optString("codec"))&&option.has("preview")&&!option.getBoolean("preview")&&(best==null||option.optInt("bitrateInKbps")>best.optInt("bitrateInKbps")))best=option;}if(best==null)throw new IOException("Яндекс не выдал доступный полный MP3");
+        if(files.recover(row))return;JSONObject current=store.row(row.getString("id"));if(current!=null)row=current;checkStop();JSONObject t=Store.metadata(row);String tree=store.prefs.getString("tree","");String name=Mp3.filename(Store.artist(t),t.optString("title"),Net.id(row.getString("id")));if(files.adoptExisting(row,t,tree,name))return;if(t.optLong("durationMs")<=0)throw new IOException("Яндекс не выдал длительность для проверки полного MP3");JSONArray options=(JSONArray)net.api("/tracks/"+Net.id(row.getString("id"))+"/download-info",null);JSONObject best=null;for(int n=0;n<options.length();n++){JSONObject option=options.getJSONObject(n);if("mp3".equals(option.optString("codec"))&&option.has("preview")&&!option.getBoolean("preview")&&(best==null||option.optInt("bitrateInKbps")>best.optInt("bitrateInKbps")))best=option;}if(best==null)throw new IOException("Яндекс не выдал доступный полный MP3");
         if(context.getCacheDir().getUsableSpace()<256L*1024*1024)throw new IOException("Недостаточно места для временного файла");
         File raw=File.createTempFile("song-",".raw",context.getCacheDir()),tagged=File.createTempFile("song-",".mp3",context.getCacheDir());
         try{

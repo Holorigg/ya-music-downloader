@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.provider.DocumentsContract;
 import org.json.*;
 import java.io.*;
+import java.text.Normalizer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -19,6 +20,62 @@ final class Files {
     String hash(Uri uri)throws Exception{InputStream in=context.getContentResolver().openInputStream(uri);if(in==null)throw new IOException("Файл недоступен");try(InputStream f=in){return Mp3.hash(f);}}
     Uri create(String tree,String mime,String name)throws Exception{Uri result=DocumentsContract.createDocument(context.getContentResolver(),root(tree),mime,name);if(result==null)throw new IOException("Папка не поддерживает создание файлов");return result;}
     void write(Uri uri,InputStream source)throws Exception{try(InputStream in=source;OutputStream out=context.getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException("Не удалось открыть файл для записи");byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1){SyncEngine.checkStop();out.write(b,0,n);}out.flush();}}
+    private Uri uniqueChild(String tree,String name)throws Exception{
+        Uri t=Uri.parse(tree),children=DocumentsContract.buildChildDocumentsUriUsingTree(t,DocumentsContract.getTreeDocumentId(t)),found=null;
+        try(Cursor c=context.getContentResolver().query(children,new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME},null,null,null)){
+            if(c==null)throw new IOException("Папка недоступна");
+            while(c.moveToNext())if(name.equals(c.getString(1))){if(found!=null)throw new IOException("В папке несколько файлов с таким именем — не усваиваю их");found=DocumentsContract.buildDocumentUriUsingTree(t,c.getString(0));}
+        }
+        return found;
+    }
+    private void validateCandidate(Uri uri,String name)throws Exception{
+        String[] columns={DocumentsContract.Document.COLUMN_DISPLAY_NAME,DocumentsContract.Document.COLUMN_MIME_TYPE,DocumentsContract.Document.COLUMN_FLAGS};
+        try(Cursor c=context.getContentResolver().query(uri,columns,null,null,null)){
+            if(c==null||!c.moveToFirst())throw new IOException("Файл исчез из выбранной папки");
+            int display=c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME),mime=c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE),flags=c.getColumnIndex(DocumentsContract.Document.COLUMN_FLAGS);
+            if(display<0||mime<0||flags<0||!name.equals(c.getString(display)))throw new IOException("Не удалось проверить файл в выбранной папке");
+            String type=c.getString(mime);if(DocumentsContract.Document.MIME_TYPE_DIR.equals(type))throw new IOException("Папка не является MP3");
+            int documentFlags=c.getInt(flags);if((documentFlags&DocumentsContract.Document.FLAG_VIRTUAL_DOCUMENT)!=0)throw new IOException("Виртуальный документ нельзя усвоить как MP3");if((documentFlags&DocumentsContract.Document.FLAG_PARTIAL)!=0)throw new IOException("Незавершённый документ нельзя усвоить как MP3");
+            if(c.moveToNext())throw new IOException("Документ неоднозначен — не усваиваю файл");
+        }
+    }
+    private static String normalized(String value){return Normalizer.normalize(value==null?"":value,Normalizer.Form.NFC).trim();}
+    /** Restore a known owned file by its saved identity, or adopt an unknown export after strict metadata checks. */
+    synchronized boolean adoptExisting(JSONObject row,JSONObject metadata,String tree,String name)throws Exception{
+        String id=Net.id(row.getString("id")),knownSha=row.optString("sha"),pendingSha=row.optString("pending_sha"),knownUri=row.optString("uri");
+        boolean owned=!knownSha.isEmpty()||!knownUri.isEmpty();
+        String candidateName=owned?row.optString("name"):name;
+        if(owned){
+            if(!knownSha.matches("[0-9a-f]{64}")||candidateName.isEmpty())throw new IOException("Сохранённая проверка MP3 неполна; файл не усваиваю");
+            String knownTree=row.optString("tree");if(!knownTree.isEmpty()&&!knownTree.equals(tree))throw new IOException("Файл сохранён в другой выбранной папке");
+        }
+        Uri candidate=uniqueChild(tree,candidateName);if(candidate==null)return false;
+        long duration=metadata.optLong("durationMs");
+        String title=normalized(metadata.optString("title")),artist=normalized(Store.artist(metadata)),album=normalized(Store.album(metadata).optString("title",""));
+        if(!owned&&(duration<=0||title.isEmpty()||artist.isEmpty()||!candidateName.equals(Mp3.filename(Store.artist(metadata),metadata.optString("title"),id))))throw new IOException("Файл с таким именем уже есть, но его принадлежность песне не подтверждена");
+        if(owned&&!knownUri.isEmpty()&&!candidate.equals(Uri.parse(knownUri)))throw new IOException("Сохранённая песня больше не находится по своему документу в выбранной папке");
+        validateCandidate(candidate,candidateName);
+        File copy=File.createTempFile("import-",".mp3",context.getCacheDir());
+        try{
+            try(InputStream in=context.getContentResolver().openInputStream(candidate);OutputStream out=new FileOutputStream(copy)){
+                if(in==null)throw new IOException("Файл недоступен в выбранной папке");byte[] b=new byte[65536];int n;long size=0;
+                while((n=in.read(b))!=-1){SyncEngine.checkStop();size+=n;if(size>512L*1024*1024)throw new IOException("Файл слишком большой для безопасной проверки");out.write(b,0,n);}out.flush();
+            }
+            if(copy.length()==0)throw new IOException("Файл MP3 пуст");
+            Mp3.inspect(copy,owned?0:duration);Mp3.Tags tags=null;try{tags=Mp3.readTags(copy);}catch(Exception ignored){}
+            if(!owned&&(tags==null||!title.equals(normalized(tags.text.get("TIT2")))||!artist.equals(normalized(tags.text.get("TPE1")))||!album.equals(normalized(tags.text.get("TALB")))))throw new IOException("В существующем MP3 не совпадают теги песни");
+            String sha=Mp3.hash(copy);long size=copy.length();
+            if(owned){
+                if(!knownSha.isEmpty()&&!knownSha.matches("[0-9a-f]{64}")||!pendingSha.isEmpty()&&!pendingSha.matches("[0-9a-f]{64}"))throw new IOException("Сохранённая проверка MP3 некорректна; файл не усваиваю");
+                if(!knownSha.equals(sha)||!pendingSha.isEmpty()&&!pendingSha.equals(sha))throw new IOException("MP3 изменён после сохранённой проверки. Файл оставлен без изменений.");
+            }else if(!pendingSha.isEmpty()){
+                if(!pendingSha.matches("[0-9a-f]{64}")||!pendingSha.equals(sha))throw new IOException("MP3 изменён после сохранённой проверки. Файл оставлен без изменений.");
+            }
+            Uri current=uniqueChild(tree,candidateName);if(current==null||!candidate.equals(current))throw new IOException("Файл в выбранной папке изменился во время проверки");
+            validateCandidate(current,candidateName);if(!hash(current).equals(sha))throw new IOException("Файл изменился во время проверки; он оставлен без изменений");
+            SyncEngine.checkStop();commit(row.getString("id"),current,tree,candidateName,sha,size,tags!=null&&tags.cover?"done":"pending",tags!=null&&tags.lyrics?"done":"pending");return true;
+        }finally{copy.delete();}
+    }
     synchronized void publish(JSONObject row,File source,String tree,String name,String cover,String lyrics)throws Exception{
         String sha=Mp3.hash(source);Map<String,Uri> children=children(tree);if(children.containsKey(name))throw new IOException("В папке уже есть такой файл. Он сохранён без перезаписи.");
         Uri part=create(tree,"application/octet-stream",name+".part");ContentValues pending=new ContentValues();pending.put("pending_uri",part.toString());pending.put("pending_sha",sha);pending.put("pending_size",source.length());pending.put("pending_tree",tree);pending.put("pending_name",name);pending.put("pending_cover",cover);pending.put("pending_lyrics",lyrics);store.update(row.getString("id"),pending);

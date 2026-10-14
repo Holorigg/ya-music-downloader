@@ -17,6 +17,7 @@ import sqlite3
 import subprocess
 import threading
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 import requests
 from auth import AUTH,ROOT,write_private,atomic_bytes,AuthRequired,access_token,refresh
@@ -212,16 +213,95 @@ def validate(path,row):
     return duration
 
 
+def complete_mp3_frames(path):
+    """Check physical MPEG frame boundaries; decoders may ignore a cut tail."""
+    with path.open('rb') as handle:
+        length=path.stat().st_size;header=handle.read(10);start=0;end=length
+        if header[:3]==b'ID3':
+            if len(header)!=10 or any(x&128 for x in header[6:10]):return False
+            start=10+sum(x<<(7*(3-i)) for i,x in enumerate(header[6:10]))
+            if header[3]==4 and header[5]&16:start+=10
+        if end>=128:
+            handle.seek(end-128)
+            if handle.read(3)==b'TAG':end-=128
+        if end>=32:
+            handle.seek(end-32);footer=handle.read(16)
+            if footer[:8]==b'APETAGEX':
+                size=int.from_bytes(footer[12:16],'little')
+                if not 32<=size<end-start:return False
+                end-=size
+        at=start;frames=0;v1=(0,32,40,48,56,64,80,96,112,128,160,192,224,256,320);v2=(0,8,16,24,32,40,48,56,64,80,96,112,128,144,160)
+        while at<end:
+            handle.seek(at);data=handle.read(4)
+            if len(data)!=4:return False
+            bits=int.from_bytes(data,'big');version=(bits>>19)&3;layer=(bits>>17)&3;bitrate=(bits>>12)&15;rate=(bits>>10)&3
+            if bits&0xffe00000!=0xffe00000 or version==1 or layer!=1 or bitrate in (0,15) or rate==3:return False
+            hz=(44100,48000,32000)[rate]//(1 if version==3 else 2 if version==2 else 4)
+            size=(144000 if version==3 else 72000)*(v1 if version==3 else v2)[bitrate]//hz+((bits>>9)&1)
+            if size<4 or at+size>end:return False
+            at+=size;frames+=1
+        return frames>0 and at==end
+
+
+def reuse_existing(row,target,uid):
+    """Restore an existing export read-only; retain any known hash baseline."""
+    from mutagen.id3 import ID3
+    from mutagen.mp3 import MP3
+    from mutagen import MutagenError
+    if not target.is_file() or target.is_symlink():return False
+    if not target.resolve().is_relative_to(DEST.resolve()):return False
+    before=target.stat();sha=checksum(target)
+    tracked=bool(row.get('path') or row.get('sha256') or row.get('download_new_sha'))
+    if tracked:
+        if (not row.get('path') or not row.get('sha256') or
+                Path(row['path']).resolve()!=target.resolve() or
+                before.st_size!=row.get('size') or sha!=row['sha256']):return False
+        cover=row.get('cover_status') or 'pending';lyrics=row.get('lyrics_status') or 'pending'
+        bitrate=row.get('bitrate')
+    else:
+        if target.name!=name(row) or target.parent.resolve()!=(DEST/('account_'+uid)).resolve():return False
+        if not row.get('title') or not row.get('artist') or not row.get('duration_ms'):return False
+        # Legacy exports have no ownership record in a fresh profile. Require
+        # their exact ID-bearing name, identity tags and a complete decoded MP3.
+        with target.open('rb') as handle:
+            header=handle.read(10)
+        if len(header)!=10 or header[:3]!=b'ID3' or any(x&128 for x in header[6:10]):return False
+        tag_size=sum(x<<(7*(3-i)) for i,x in enumerate(header[6:10]))
+        if tag_size>16*1024*1024:return False
+        def normalized(value):return unicodedata.normalize('NFC',str(value or '')).strip()
+        try:
+            tags=ID3(target)
+            if any(normalized(tags.get(key))!=normalized(row.get(field)) for key,field in
+                    (('TIT2','title'),('TPE1','artist'),('TALB','album'))):return False
+            if not complete_mp3_frames(target):return False
+            media_tool('ffprobe');media_tool('ffmpeg')
+            validate(target,row)
+            bitrate=round(MP3(target).info.bitrate/1000)
+            cover='done' if tags.getall('APIC') else 'pending'
+            lyrics='done' if tags.getall('USLT') else 'pending'
+        except (OSError,ValueError,RuntimeError,MutagenError,KeyError):return False
+    after=target.stat()
+    if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):return False
+    if checksum(target)!=sha:return False
+    if STOP.exists():return False
+    with db() as c:c.execute("UPDATE tracks SET status='downloaded',path=?,size=?,sha256=?,bitrate=?,error=NULL,cover_status=?,lyrics_status=? WHERE id=?",
+                            (str(target.resolve()),after.st_size,sha,bitrate,cover,lyrics,row['id']))
+    return True
+
+
 def download(row):
     with db() as c:uid=c.execute("SELECT value FROM meta WHERE key='uid'").fetchone()[0]
     target=Path(row['path']) if row.get('path') else DEST/('account_'+uid)/name(row)
     if not target.resolve().is_relative_to(DEST.resolve()):raise RuntimeError('Путь трека вне выбранной папки.')
+    if target.is_symlink():raise RuntimeError('По этому пути находится ссылка. Она сохранена без изменений.')
     target.parent.mkdir(parents=True,exist_ok=True)
     if target.exists():
         if row.get('download_new_sha') and target.stat().st_size==row['download_new_size'] and checksum(target)==row['download_new_sha']:
             with db() as c:c.execute("UPDATE tracks SET status='downloaded',path=?,sha256=download_new_sha,size=download_new_size,bitrate=download_new_bitrate,error=NULL,download_new_sha=NULL,download_new_size=NULL,download_new_bitrate=NULL WHERE id=?",(str(target),row['id']))
             return True
         if row['status']=='downloaded' and row['path']==str(target) and target.stat().st_size==row['size'] and checksum(target)==row['sha256']:return True
+        if reuse_existing(row,target,uid):return True
+        if STOP.exists():return False
         raise RuntimeError('По этому пути уже есть файл. Он сохранён без перезаписи.')
     if shutil.disk_usage(DEST).free<512*1024*1024:raise RuntimeError('Недостаточно места в выбранной папке.')
     options=api('/tracks/'+ident(row['id'])+'/download-info')
