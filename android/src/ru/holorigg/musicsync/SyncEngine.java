@@ -39,7 +39,8 @@ final class SyncEngine {
             String move=store.prefs.getString("move_target","");if(!move.isEmpty()){phase="move";message("Завершаю перенос музыки…");files.move(move);}
             String tree=store.prefs.getString("tree","");if(tree.isEmpty())throw new IOException("Сначала выбери папку сохранения");files.children(tree);catalog();
             for(JSONObject r:store.rows("pending_uri IS NOT NULL")){checkStop();files.recover(r);}
-            for(JSONObject r:store.rows("status='downloaded' AND liked=1"))if(!files.exists(r.optString("uri"))){ContentValues v=new ContentValues();v.put("status","pending");v.putNull("uri");v.put("cover","pending");v.put("lyrics","pending");store.update(r.getString("id"),v);}
+            for(JSONObject r:store.rows("status='downloaded' AND liked=1")){checkStop();if(!files.exists(r.optString("uri")))markMissingFile(r);}
+            restoreUnavailable();
             for(int pass=1;pass<=3;pass++){
                 checkStop();List<JSONObject> pending=store.rows("liked=1 AND status IN ('pending','failed')");if(pending.isEmpty())break;
                 message("Скачивание: проход "+pass+", в очереди "+pending.size());process(pending,false);files.playlist(tree);
@@ -48,6 +49,20 @@ final class SyncEngine {
             if(!extras.isEmpty()){message("Обновляю обложки и тексты…");process(extras,true);}checkStop();files.playlist(tree);
             int done=store.downloaded(),left=store.rows("liked=1 AND status!='downloaded'").size();store.prefs.edit().putLong("last_sync",System.currentTimeMillis()).putInt("last_added",Math.max(0,done-before)).putInt("last_missing",left).putBoolean("needs_login",false).commit();phase="done";currentTrack="";message("Сохранено: "+done+". Не скачалось: "+left+".");
         }finally{statusStore=null;}
+    }
+    /** Queue a missing downloaded file only when current catalog metadata still permits a network download. */
+    void markMissingFile(JSONObject row)throws Exception{
+        checkStop();JSONObject metadata=Store.metadata(row);boolean available=metadata.optBoolean("available")||metadata.optBoolean("availableForPremiumUsers");
+        ContentValues values=new ContentValues();values.put("status",available?"pending":"unavailable");values.putNull("uri");values.put("cover","pending");values.put("lyrics","pending");store.update(row.getString("id"),values);
+    }
+    /** Attempt local-only recovery for unavailable liked tracks; never enqueue them for network download here. */
+    void restoreUnavailable()throws Exception{
+        checkStop();String tree=store.prefs.getString("tree","");if(tree.isEmpty())return;
+        for(JSONObject row:store.rows("liked=1 AND status='unavailable'")){
+            checkStop();String id=row.getString("id");JSONObject current=store.row(id);if(current!=null)row=current;
+            JSONObject metadata=Store.metadata(row);String name=Mp3.filename(Store.artist(metadata),metadata.optString("title"),Net.id(id));
+            try{files.adoptExisting(row,metadata,tree,name);}catch(Stopped e){throw e;}catch(Exception e){ContentValues values=new ContentValues();values.put("error",Net.safe(e));store.update(id,values);}
+        }
     }
     void catalog()throws Exception{
         phase="catalog";currentTrack="";total=0;completed=0;

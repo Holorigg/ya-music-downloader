@@ -78,6 +78,31 @@ class ExistingChecks(unittest.TestCase):
         before=self.target.read_bytes()
         with patch.object(m,'validate',side_effect=lambda *_:m.STOP.touch()):self.assertFalse(m.download(self.row()))
         self.assertEqual(self.target.read_bytes(),before);self.assertIsNone(self.row()['sha256']);self.assertEqual(self.row()['status'],'failed');self.api.assert_not_called()
+    def sync_local(self):
+        credentials=self.root/'test-auth.json';credentials.write_text('{}',encoding='utf-8')
+        with patch.object(m,'AUTH',credentials),patch.object(m,'catalog',return_value=True),patch.object(m.settings,'destination',return_value=m.DEST),patch.object(m.settings,'load',return_value={'lyrics':False}),patch.object(m.settings,'MOVE',self.root/'move.json'),patch.object(m,'status'):
+            m.run()
+        self.api.assert_not_called()
+    def unavailable_sync(self):
+        with m.db() as c:c.execute("UPDATE tracks SET status='unavailable',available=0 WHERE id='17'")
+        self.sync_local()
+    def test_sync_restores_local_export_even_when_service_track_is_unavailable(self):
+        before=self.target.read_bytes();self.unavailable_sync()
+        self.assertEqual(self.row()['status'],'downloaded');self.assertEqual(self.target.read_bytes(),before)
+    def test_unavailable_missing_or_foreign_file_stays_unavailable_without_download(self):
+        self.target.unlink();self.unavailable_sync();self.assertEqual(self.row()['status'],'unavailable');self.assertFalse(self.target.exists())
+        self.target.write_bytes(b'Unrelated local file');self.unavailable_sync();self.assertEqual(self.row()['status'],'unavailable');self.assertEqual(self.target.read_bytes(),b'Unrelated local file')
+    def test_unavailable_local_recovery_obeys_stop_and_retains_known_hash(self):
+        original=m.checksum(self.target)
+        with m.db() as c:c.execute("UPDATE tracks SET status='unavailable',available=0,path=?,size=?,sha256=? WHERE id='17'",(str(self.target),self.target.stat().st_size,original))
+        m.STOP.touch();m.recover_unavailable();self.assertEqual(self.row()['status'],'unavailable');m.STOP.unlink()
+        self.target.write_bytes(b'Changed known file');m.recover_unavailable()
+        self.assertEqual(self.row()['status'],'unavailable');self.assertEqual(self.row()['sha256'],original);self.api.assert_not_called()
+    def test_a_deleted_known_file_does_not_trigger_download_when_service_is_unavailable(self):
+        original=m.checksum(self.target);size=self.target.stat().st_size
+        with m.db() as c:c.execute("UPDATE tracks SET status='downloaded',available=0,path=?,size=?,sha256=? WHERE id='17'",(str(self.target),size,original))
+        self.target.unlink();self.sync_local()
+        self.assertEqual(self.row()['status'],'unavailable');self.assertEqual(self.row()['sha256'],original);self.assertFalse(self.target.exists())
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

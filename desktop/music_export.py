@@ -289,6 +289,20 @@ def reuse_existing(row,target,uid):
     return True
 
 
+def recover_unavailable():
+    """Service availability does not prevent restoring a complete local export."""
+    with db() as c:
+        uid=c.execute("SELECT value FROM meta WHERE key='uid'").fetchone()[0]
+        rows=[dict(r) for r in c.execute("SELECT * FROM tracks WHERE liked=1 AND available=0 AND status!='downloaded' ORDER BY position")]
+    for row in rows:
+        if STOP.exists():return
+        if not row.get('path') and (not row.get('artist') or not row.get('title')):continue
+        target=Path(row['path']) if row.get('path') else DEST/('account_'+uid)/name(row)
+        try:reuse_existing(row,target,uid)
+        except Exception as exc:
+            with db() as c:c.execute('UPDATE tracks SET error=? WHERE id=?',(safe_error(exc),row['id']))
+
+
 def download(row):
     with db() as c:uid=c.execute("SELECT value FROM meta WHERE key='uid'").fetchone()[0]
     target=Path(row['path']) if row.get('path') else DEST/('account_'+uid)/name(row)
@@ -427,7 +441,8 @@ def run(probe=False,reset_stop=True):
     # Recover missing tracked files; changed files are never overwritten.
     with db() as c:
         for r in c.execute("SELECT id,path FROM tracks WHERE status='downloaded' AND liked=1").fetchall():
-            if not Path(r['path']).is_file():c.execute("UPDATE tracks SET status='pending',lyrics_status='pending',cover_status='pending',error=NULL WHERE id=?",(r['id'],))
+            if not Path(r['path']).is_file():c.execute("UPDATE tracks SET status=CASE WHEN available=0 THEN 'unavailable' ELSE 'pending' END,lyrics_status='pending',cover_status='pending',error=NULL WHERE id=?",(r['id'],))
+    recover_unavailable()
     for PASS in range(1,(1 if probe else 3)+1):
         if STOP.exists():break
         with db() as c:rows=[dict(r) for r in c.execute("SELECT * FROM tracks WHERE status IN ('pending','failed') AND available=1 AND liked=1 ORDER BY position")]
