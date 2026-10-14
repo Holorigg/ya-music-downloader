@@ -28,6 +28,33 @@ Robolectric проверяет логику и отрисовывает наст
 инициализации нативного runtime Robolectric; тесты отрисовки остаются
 включены в режиме `NATIVE`. Прохождение этого набора на Linux пока не подтверждено.
 
+## Сборки Windows
+
+Используй Windows x64 и Python 3.12. Установи зависимости приложения и
+`desktop/build-requirements.txt` в отдельное виртуальное окружение.
+В `desktop/tools` положи FFmpeg, FFprobe и DLL выбранной LGPL shared сборки;
+в `desktop/packaging/licenses` — её лицензию, уведомления зависимостей,
+исходники и инструкции их получения. Эти каталоги исключены из Git.
+Состав готового комплекта описан в его `licenses/SOURCES.md`.
+
+```powershell
+python tools/build_windows.py --mode both
+```
+
+Результаты: `desktop/dist/onedir/MyMusic/MyMusic.exe` с каталогом `_internal`
+и самостоятельный `desktop/dist/onefile/MyMusic.exe`. Для portable ZIP
+упаковывай весь каталог `MyMusic`, включая `_internal`.
+
+Проверь оба EXE, в том числе worker и инструменты, без настоящего аккаунта:
+
+```powershell
+.\desktop\dist\onedir\MyMusic\MyMusic.exe --bundle-self-test "$env:TEMP\music-onedir-check.json"
+.\desktop\dist\onefile\MyMusic.exe --bundle-self-test "$env:TEMP\music-onefile-check.json"
+```
+
+Диагностика создаёт временный профиль, использует синтетическое аудио и
+записывает JSON-отчёт. Запуск без авторизации не делает сетевых запросов.
+
 Перед коммитом, из корня репозитория:
 
 ```powershell

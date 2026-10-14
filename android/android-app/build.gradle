@@ -7,8 +7,8 @@ android {
         applicationId 'ru.holorigg.musicsync'
         minSdk 26
         targetSdk 35
-        versionCode 20002
-        versionName '2.0.2'
+        versionCode 20003
+        versionName '2.0.3'
         resValue 'string', 'app_name', 'Моя музыка'
     }
     sourceSets {

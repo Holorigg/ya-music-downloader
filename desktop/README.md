@@ -3,15 +3,18 @@
 Нативный интерфейс PySide6. Воспроизведение — в назначенном плеере Windows.
 Проверенная среда: Windows, Python 3.12 x64.
 
-Архив `Windows-source.zip` доступен в
-[релизах](https://github.com/Holorigg/ya-music-downloader/releases/latest).
-Это исходники с запуском через `setup.ps1` и `Start-Music.cmd`; Python и FFmpeg
-устанавливаются отдельно.
+## Готовая версия
+
+Скачай Windows portable ZIP или отдельный EXE из
+[релизов](https://github.com/Holorigg/ya-music-downloader/releases/latest).
+ZIP нужно полностью распаковать и открыть `MyMusic.exe`. Отдельный EXE
+запускается самостоятельно. Python, Qt, FFmpeg и FFprobe уже включены.
+Поддерживаемая платформа сборки — Windows 10 22H2 / Windows 11, x64.
 
 **Тексты песен — WIP:** сейчас они могут не подтянуться даже при включённой
 настройке. Яндекс отдаёт их нестабильно. Это не мешает скачиванию MP3.
 
-## Установка и запуск
+## Запуск из исходников
 
 1. Установи Python 3.12 x64 с официального [python.org](https://www.python.org/downloads/windows/).
 2. Установи FFmpeg вместе с FFprobe и добавь `bin` в PATH. Сборки для Windows

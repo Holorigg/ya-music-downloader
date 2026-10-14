@@ -38,6 +38,7 @@ __pycache__/
 **/*.csv
 **/*.part
 desktop/tools/
+desktop/packaging/licenses/
 desktop/design/screens/
 android/design/screens/
 .env

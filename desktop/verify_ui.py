@@ -17,7 +17,7 @@ REAL_ACCOUNT_CHECK=app.Window.check_account
 qt=QApplication.instance() or QApplication([]);qt.setQuitOnLastWindowClosed(False)
 for name in ('segoeui.ttf','seguisb.ttf'):QFontDatabase.addApplicationFont('C:/Windows/Fonts/'+name)
 
-def wait(predicate,seconds=4):
+def wait(predicate,seconds=10):
     deadline=time.monotonic()+seconds
     while time.monotonic()<deadline:
         qt.processEvents();QTest.qWait(10)
@@ -37,8 +37,15 @@ class NativeChecks(unittest.TestCase):
         self.status('paused',100)
     def status(self,state,stamp,**fields):m.STATUS.write_text(json.dumps({'state':state,'updated':stamp,**fields}),encoding='utf-8')
     def open(self):
-        self.window=app.Window();self.window.show();wait(lambda:not self.window.snapshot_pending);qt.processEvents();QTest.qWait(220);self.window.refresh();return self.window
-    def reload(self):self.window.request_snapshot();wait(lambda:not self.window.snapshot_pending);self.window.refresh()
+        self.window=app.Window();self.window.show();wait(lambda:self.window.rows_signature is not None);qt.processEvents();QTest.qWait(220);self.window.refresh();return self.window
+    def reload(self):
+        rows,meta=library.snapshot();signature=tuple(tuple(row.items()) for row in rows)
+        jobs=set(self.window.snapshot_jobs);self.window.request_snapshot();jobs.update(self.window.snapshot_jobs)
+        # Periodic polling may already queue another read as this one finishes.
+        # Observe delivery of the requested state rather than global idleness.
+        wait(lambda:not jobs.intersection(self.window.snapshot_jobs))
+        wait(lambda:self.window.rows_signature==signature and self.window.meta==meta)
+        self.window.refresh()
     def tearDown(self):
         if self.window:
             self.window.close();wait(lambda:not self.window.isVisible(),5);self.window.deleteLater();qt.processEvents()
@@ -94,6 +101,11 @@ class NativeChecks(unittest.TestCase):
         w=self.open();w.list.verticalScrollBar().setValue(380)
         with m.db() as c:c.execute("UPDATE tracks SET title='Изменено' WHERE id='100'")
         self.reload();self.assertEqual(w.list.verticalScrollBar().value(),380)
+    def test_reload_delivers_changes_while_periodic_poll_has_another_read_queued(self):
+        w=self.open()
+        with m.db() as c:c.execute("UPDATE tracks SET title='Новая версия' WHERE id='1'")
+        w.request_snapshot();w.request_snapshot();self.assertTrue(w.snapshot_again)
+        self.reload();self.assertEqual(next(row for row in w.rows if row['id']=='1')['title'],'Новая версия')
     def test_background_job_keeps_ui_alive_and_close_waits(self):
         w=self.open();gate=threading.Event();w.job(lambda:gate.wait(3),lambda _:None);w.search.setText('Demo Artist');self.assertEqual(w.model.rowCount(),1);w.close();self.assertTrue(w.isVisible());self.assertTrue(m.STOP.exists());gate.set();wait(lambda:not w.isVisible());self.assertFalse(w.auto_timer.isActive())
     def test_notification_rules(self):

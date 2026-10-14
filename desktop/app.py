@@ -10,9 +10,10 @@ from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBo
 import auth,settings,library
 import music_export as m
 from music_export import worker_running as running
+from runtime_paths import sync_worker_command
 from native_ui import Theme,Switch,NavButton,RoundedArt,Artwork,MusicModel,MusicList,SongDelegate,SwipeCard,button,icon,fade,ROLE
 
-VERSION='2.0.2'
+VERSION='2.0.3'
 PHASES={'cataloging':'Проверка избранного','downloading':'Скачивание музыки','enriching':'Обложки и тексты','stopped':'Синхронизация остановлена','failed':'Синхронизация не завершена','needs_login':'Нужен вход в Яндекс'}
 
 class Job(QThread):
@@ -257,7 +258,7 @@ class Window(QMainWindow):
             if not automatic:self.nav_buttons[2].click();self.snack('Войди в музыкальный аккаунт')
             return
         if settings.MOVE.exists():self.nav_buttons[1].click();self.snack('Заверши перенос в выбранную папку');return
-        self.automatic_run=bool(automatic);self.sync_started=time.time();m.STOP.unlink(missing_ok=True);self.process.setWorkingDirectory(str(auth.ROOT));self.process.start(str(Path(sys.executable).with_name('python.exe')),['-X','utf8',str(auth.ROOT/'run_standalone.py'),'--gui']);self.refresh()
+        self.automatic_run=bool(automatic);self.sync_started=time.time();m.STOP.unlink(missing_ok=True);program,args=sync_worker_command(gui=True);self.process.setWorkingDirectory(str(auth.ROOT));self.process.start(program,args);self.refresh()
     def stop(self):m.STOP.touch();self.notice_title.setText('Останавливаем…');self.notice_action.setEnabled(False)
     def worker_finished(self,*_):
         self.notice_action.setEnabled(True);self.request_snapshot();self.refresh();QTimer.singleShot(200,self.notify_result)

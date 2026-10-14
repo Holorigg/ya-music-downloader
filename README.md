@@ -14,8 +14,8 @@
 У обеих платформ общий номер версии.
 
 - **Android:** установи APK. Обновление устанавливается поверх прежней версии.
-- **Windows:** распакуй `Windows-source.zip` и следуй
-  [инструкции запуска](desktop/README.md). Нужны Python 3.12 x64 и FFmpeg.
+- **Windows:** распакуй portable ZIP и запусти `MyMusic.exe` либо скачай
+  отдельный EXE. Python, Qt и FFmpeg включены. Windows 10 22H2 / 11, x64.
 
 ![Библиотека Windows в тёмной теме](docs/screenshots/desktop-dark.png)
 

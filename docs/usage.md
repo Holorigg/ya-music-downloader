@@ -2,9 +2,9 @@
 
 ## Вход и первая синхронизация
 
-1. Скачай APK для Android или архив исходников для Windows из
+1. Скачай APK для Android или portable ZIP / EXE для Windows из
    [релизов](https://github.com/Holorigg/ya-music-downloader/releases/latest).
-   Запуск Windows: [инструкция](../desktop/README.md).
+   В Windows распакуй ZIP и открой `MyMusic.exe` либо запусти отдельный EXE.
    Сборка Android из исходников: [инструкция](../android/README.md).
 2. Открой «Аккаунт → Войти через Яндекс». Подтверди вход на официальном сайте;
    пароль вводится там. Вход на ПК и телефоне выполняется отдельно.
