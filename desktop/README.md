@@ -1,0 +1,67 @@
+# Windows
+
+Нативный интерфейс PySide6. Воспроизведение — в назначенном плеере Windows.
+Проверенная среда: Windows, Python 3.12 x64.
+
+## Установка и запуск
+
+1. Установи Python 3.12 x64 с официального [python.org](https://www.python.org/downloads/windows/).
+2. Установи FFmpeg вместе с FFprobe и добавь `bin` в PATH. Сборки для Windows
+   указаны на [странице FFmpeg](https://ffmpeg.org/download.html#build-windows).
+   Можно задать `MUSIC_FFMPEG_DIR` или положить программы в `desktop/tools/`.
+3. Из каталога `desktop` выполни:
+
+```powershell
+.\setup.ps1
+```
+
+Если Python Launcher отсутствует, передай путь:
+`.\setup.ps1 -PythonExe 'C:\path\to\python.exe'`.
+Скрипт создаёт `.venv` и устанавливает зафиксированные зависимости.
+4. Открой `Start-Music.cmd`, войди в аккаунт и выбери папку музыки.
+
+Если запуск PowerShell-скриптов ограничен настройкой компьютера, установи
+зависимости командами, не меняя эту настройку:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock.txt
+.\Start-Music.cmd
+```
+
+FFmpeg не поставляется с исходниками. Приложение ищет обе программы сначала
+в `MUSIC_FFMPEG_DIR`, затем в `desktop/tools`, затем в PATH.
+
+## Данные
+
+Токен, база, настройки и кеши находятся в `%LOCALAPPDATA%\YaMusicDownloader`.
+Windows-токен хранится локально в JSON, без собственного шифрования;
+он не записывается в музыкальные файлы и не отправляется серверам обложек.
+Папка музыки первоначально — `Music` текущего пользователя.
+Для разработки можно выбрать отдельный каталог через `MUSIC_DATA_DIR`.
+
+Автосинхронизация первоначально выключена. При включении действует только
+пока окно приложения открыто, в том числе свёрнуто. Закрытие завершает процесс
+после сохранения начатых операций. Автозагрузка и задания Windows не создаются.
+
+Подробная [инструкция](../docs/usage.md).
+
+## CLI
+
+```powershell
+.\.venv\Scripts\python.exe sync_cli.py login
+.\.venv\Scripts\python.exe sync_cli.py poll
+.\.venv\Scripts\python.exe sync_cli.py sync
+.\.venv\Scripts\python.exe sync_cli.py status
+```
+
+`token` вводит токен скрыто, через `getpass`; не передавай его аргументом.
+
+## Проверки
+
+```powershell
+.\.venv\Scripts\python.exe run_checks.py
+```
+
+Проверки не обращаются к Яндексу и не используют пользовательскую библиотеку.
+Тестовое аудио генерирует FFmpeg, обложки и тексты синтетические.

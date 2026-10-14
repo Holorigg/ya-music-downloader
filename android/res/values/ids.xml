@@ -1,0 +1,27 @@
+<resources>
+    <item type="id" name="library_list" />
+    <item type="id" name="library_empty" />
+    <item type="id" name="sync_button" />
+    <item type="id" name="search" />
+    <item type="id" name="search_icon" />
+    <item type="id" name="search_clear" />
+    <item type="id" name="filter_all" />
+    <item type="id" name="filter_downloaded" />
+    <item type="id" name="filter_missing" />
+    <item type="id" name="filter_archive" />
+    <item type="id" name="archive_clear" />
+    <item type="id" name="sync_host" />
+    <item type="id" name="auto_switch" />
+    <item type="id" name="wifi_switch" />
+    <item type="id" name="lyrics_switch" />
+    <item type="id" name="folder_button" />
+    <item type="id" name="account_login" />
+    <item type="id" name="sync_panel" />
+    <item type="id" name="mini_player" />
+    <item type="id" name="navigation" />
+    <item type="id" name="theme_button" />
+    <item type="id" name="settings_scroll" />
+    <item type="id" name="nav_library" />
+    <item type="id" name="nav_settings" />
+    <item type="id" name="nav_account" />
+</resources>
