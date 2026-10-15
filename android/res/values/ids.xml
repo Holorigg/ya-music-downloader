@@ -18,6 +18,20 @@
     <item type="id" name="account_login" />
     <item type="id" name="sync_panel" />
     <item type="id" name="mini_player" />
+    <item type="id" name="mini_next" />
+    <item type="id" name="song_art" />
+    <item type="id" name="song_title" />
+    <item type="id" name="song_artist" />
+    <item type="id" name="song_album" />
+    <item type="id" name="song_seek" />
+    <item type="id" name="song_position" />
+    <item type="id" name="song_duration" />
+    <item type="id" name="song_shuffle" />
+    <item type="id" name="song_previous" />
+    <item type="id" name="song_play_pause" />
+    <item type="id" name="song_next" />
+    <item type="id" name="song_repeat" />
+    <item type="id" name="song_lyrics" />
     <item type="id" name="navigation" />
     <item type="id" name="theme_button" />
     <item type="id" name="settings_scroll" />
